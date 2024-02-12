@@ -52,7 +52,7 @@ Invoke will handle establishing local virtual environments, etc. Task definition
 
 #### Local development
 
-1. Set Project Id:
+1. Set environment variables:
     ```bash
     export API_KEY=12345
     export DATA_STORE_LOCATION=us
@@ -63,7 +63,7 @@ Invoke will handle establishing local virtual environments, etc. Task definition
     ```
 2. Start the server with hot reload:
     ```bash
-    uvicorn main:app --reload
+    uvicorn app:app --reload
     ```
 
 #### Deploying a Cloud Run service
