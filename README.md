@@ -54,11 +54,16 @@ Invoke will handle establishing local virtual environments, etc. Task definition
 
 1. Set Project Id:
     ```bash
-    export GOOGLE_CLOUD_PROJECT=<GCP_PROJECT_ID>
+    export API_KEY=12345
+    export DATA_STORE_LOCATION=us
+    export GOOGLE_CLOUD_PROJECT=sandcastle-401718
+    export DATA_STORE_ID=infofin_pdf_1703800611405
+    export OUTPUT_PROTOCOL=HTTPS
+    export OUTPUT_PATH_OVERRIDE=jasj.com/docs
     ```
 2. Start the server with hot reload:
     ```bash
-    invoke dev
+    uvicorn main:app --reload
     ```
 
 #### Deploying a Cloud Run service

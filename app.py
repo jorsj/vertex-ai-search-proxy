@@ -1,57 +1,154 @@
-# Copyright 2021 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+import os
+import uvicorn
+from fastapi import FastAPI, HTTPException, Security, status
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel
 
-import signal
-import sys
-from types import FrameType
-
-from flask import Flask
-
-from utils.logging import logger
-
-app = Flask(__name__)
+from google.cloud import discoveryengine
+from google.api_core.client_options import ClientOptions
 
 
-@app.route("/")
-def hello() -> str:
-    # Use basic logging with custom fields
-    logger.info(logField="custom-entry", arbitraryField="custom-entry")
+api_keys = [
+    os.environ["API_KEY"]
+]
 
-    # https://cloud.google.com/run/docs/logging#correlate-logs
-    logger.info("Child logger with trace Id.")
+project = os.environ["GOOGLE_CLOUD_PROJECT"]
+location = os.environ["DATA_STORE_LOCATION"]
+data_store = os.environ["DATA_STORE_ID"]
 
-    return "Hello, World!"
+try:
+    path = os.environ["OUTPUT_PATH_OVERRIDE"]
+except:
+    path = ""
+
+try:
+    protocol = os.environ["OUTPUT_PROTOCOL"].lower()
+except:
+    protocol = "gs"
+
+print(path, protocol)
+
+client_options = (
+    ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+    if location != "global"
+    else None
+)
+
+client = discoveryengine.SearchServiceClient(client_options=client_options)
+
+# Initialize request argument(s)
+
+serving_config = client.serving_config_path(
+    project=project,
+    location=location,
+    data_store=data_store,
+    serving_config="default_config"
+)
+
+content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
+    # For information about snippets, refer to:
+    # https://cloud.google.com/generative-ai-app-builder/docs/snippets
+    snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+        return_snippet=True
+    ),
+    # For information about search summaries, refer to:
+    # https://cloud.google.com/generative-ai-app-builder/docs/get-search-summaries
+    summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
+        summary_result_count=5,
+        include_citations=True,
+        ignore_adversarial_query=True,
+        ignore_non_summary_seeking_query=True,
+    ),
+)
+
+app = FastAPI(docs_url=None, redoc_url=None)
+api_key_header = APIKeyHeader(name="X-API-Key")
 
 
-def shutdown_handler(signal_int: int, frame: FrameType) -> None:
-    logger.info(f"Caught Signal {signal.strsignal(signal_int)}")
+def get_api_key(api_key_header: str = Security(api_key_header)) -> str:
+    if api_key_header in api_keys:
+        return api_key_header
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing API Key",
+    )
 
-    from utils.logging import flush
 
-    flush()
+class Request(BaseModel):
+    query: str
 
-    # Safely exit program
-    sys.exit(0)
 
+class Document(BaseModel):
+    title: str
+    link: str
+    snippets: list[str]
+
+
+class Response(BaseModel):
+    summary: str | None = None
+    documents: list[Document] | None = None
+
+
+@app.post("/")
+async def search(request: Request, api_key: str = Security(get_api_key)) -> Response:
+
+    request = discoveryengine.SearchRequest(
+        serving_config=serving_config,
+        query=request.query,
+        page_size=10,
+        content_search_spec=content_search_spec,
+        query_expansion_spec=discoveryengine.SearchRequest.QueryExpansionSpec(
+            condition=discoveryengine.SearchRequest.QueryExpansionSpec.Condition.AUTO,
+        ),
+        spell_correction_spec=discoveryengine.SearchRequest.SpellCorrectionSpec(
+            mode=discoveryengine.SearchRequest.SpellCorrectionSpec.Mode.AUTO
+        ),
+    )
+    pager = client.search(request)
+
+    documents = []
+    for result in pager.results:
+        try:
+            title = result.document.derived_struct_data["title"]
+        except:
+            title = None
+        try:
+            if path != "":
+                print()
+                link = os.path.join(
+                    f"{protocol}://",
+                    path,
+                    os.path.basename(
+                        result.document.derived_struct_data["link"])
+                )
+            else:
+                link = result.document.derived_struct_data["link"]
+        except:
+            link = None
+        try:
+            snippets = [snippet["snippet"]
+                        for snippet in result.document.derived_struct_data["snippets"]]
+        except:
+            snippets = None
+
+        document = Document(
+            title=title,
+            link=link,
+            snippets=snippets
+        )
+
+        documents.append(document)
+
+    try:
+        summary = pager.summary.summary_text
+    except:
+        summary = None
+
+    response = Response(
+        summary=summary,
+        documents=documents
+    )
+    return response
 
 if __name__ == "__main__":
-    # Running application locally, outside of a Google Cloud Environment
-
-    # handles Ctrl-C termination
-    signal.signal(signal.SIGINT, shutdown_handler)
-
-    app.run(host="localhost", port=8080, debug=True)
-else:
-    # handles Cloud Run container termination
-    signal.signal(signal.SIGTERM, shutdown_handler)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
