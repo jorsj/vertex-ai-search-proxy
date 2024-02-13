@@ -89,6 +89,11 @@ class Response(BaseModel):
     documents: list[Document] | None = None
 
 
+@app.get("/healthcheck")
+async def healthcheck() -> str:
+    return "OK"
+
+
 @app.post("/")
 async def search(request: Request, api_key: str = Security(get_api_key)) -> Response:
 
@@ -151,4 +156,5 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
     return response
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ["PORT"])
+    uvicorn.run(app, host="0.0.0.0", port=port)
