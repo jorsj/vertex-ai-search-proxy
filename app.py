@@ -26,7 +26,15 @@ try:
 except:
     protocol = "gs"
 
-print(path, protocol)
+try:
+    enable_extractive_answers = bool(os.environ["ENABLE_EXTRACTIVE_ANSWERS"])
+except:
+    enable_extractive_answers = False
+
+try:
+    enable_extractive_segments = bool(os.environ["ENABLE_EXTRACTIVE_SEGMENTS"])
+except:
+    enable_extractive_segments = False
 
 client_options = (
     ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
@@ -59,6 +67,13 @@ content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
         ignore_adversarial_query=True,
         ignore_non_summary_seeking_query=True,
     ),
+    extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
+        max_extractive_answer_count=5*int(enable_extractive_answers),
+        max_extractive_segment_count=5*int(enable_extractive_segments),
+        return_extractive_segment_score=True,
+        num_previous_segments=0,
+        num_next_segments=0
+    )
 )
 
 app = FastAPI(docs_url=None, redoc_url=None)
@@ -78,10 +93,22 @@ class Request(BaseModel):
     query: str
 
 
+class ExtractiveAnswer (BaseModel):
+    content: str | None = None
+    page_number: int | None = None
+
+
+class ExtractiveSegment (BaseModel):
+    content: str | None = None
+    page_number: int | None = None
+
+
 class Document(BaseModel):
-    title: str
-    link: str
-    snippets: list[str]
+    title: str | None = None
+    link: str | None = None
+    snippets: list[str] | None = None
+    extractive_answers: list[ExtractiveAnswer] | None = None
+    extractive_segments: list[ExtractiveSegment] | None = None
 
 
 class Response(BaseModel):
@@ -135,11 +162,34 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
                         for snippet in result.document.derived_struct_data["snippets"]]
         except:
             snippets = None
+        try:
+            extractive_answers = [
+                ExtractiveAnswer(
+                    content=extractive_answer["content"],
+                    page_number=extractive_answer["pageNumber"]
+                )
+                for extractive_answer in result.document.derived_struct_data["extractive_answers"]
+            ]
+        except:
+            extractive_answers = None
+        
+        try:
+            extractive_segments = [
+                ExtractiveSegment(
+                    content=extractive_segment["content"],
+                    page_number=extractive_segment["pageNumber"]
+                )
+                for extractive_segment in result.document.derived_struct_data["extractive_segments"]
+            ]
+        except:
+            extractive_segments = None
 
         document = Document(
             title=title,
             link=link,
-            snippets=snippets
+            snippets=snippets,
+            extractive_answers=extractive_answers,
+            extractive_segments=extractive_segments
         )
 
         documents.append(document)

@@ -60,6 +60,9 @@ Invoke will handle establishing local virtual environments, etc. Task definition
     export DATA_STORE_ID=infofin_pdf_1703800611405
     export OUTPUT_PROTOCOL=HTTPS
     export OUTPUT_PATH_OVERRIDE=jasj.com/docs
+    export PORT=8000
+    export ENABLE_EXTRACTIVE_ANSWERS=TRUE
+    export ENABLE_EXTRACTIVE_SEGMENTS=TRUE
     ```
 2. Start the server with hot reload:
     ```bash
@@ -98,82 +101,6 @@ Invoke will handle establishing local virtual environments, etc. Task definition
     ```bash
     invoke deploy
     ```
-
-### Run sample tests
-
-1. [Pass credentials via `GOOGLE_APPLICATION_CREDENTIALS` env var](https://cloud.google.com/docs/authentication/production#passing_variable):
-    ```bash
-    export GOOGLE_APPLICATION_CREDENTIALS="[PATH]"
-    ```
-
-2. Set Project Id:
-    ```bash
-    export GOOGLE_CLOUD_PROJECT=<GCP_PROJECT_ID>
-    ```
-3. Run unit tests
-    ```bash
-    invoke test
-    ```
-
-4. Run system tests
-    ```bash
-    gcloud builds submit \
-        --config test/advance.cloudbuild.yaml \
-        --substitutions 'COMMIT_SHA=manual,REPO_NAME=manual'
-    ```
-    The Cloud Build configuration file will build and deploy the containerized service
-    to Cloud Run, run tests managed by pytest, then clean up testing resources. This configuration restricts public
-    access to the test service. Therefore, service accounts need to have the permission to issue ID tokens for request authorization:
-    * Enable Cloud Run, Cloud Build, Artifact Registry, and IAM APIs:
-        ```bash
-        gcloud services enable run.googleapis.com cloudbuild.googleapis.com iamcredentials.googleapis.com artifactregistry.googleapis.com
-        ```
-        
-    * Set environment variables.
-        ```bash
-        export PROJECT_ID="$(gcloud config get-value project)"
-        export PROJECT_NUMBER="$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')"
-        ```
-
-    * Create an Artifact Registry repo (or use another already created repo):
-        ```bash
-        export REPOSITORY="samples"
-        export REGION=us-central1
-        gcloud artifacts repositories create $REPOSITORY --location $REGION --repository-format "docker"
-        ```
-  
-    * Create service account `token-creator` with `Service Account Token Creator` and `Cloud Run Invoker` roles.
-        ```bash
-        gcloud iam service-accounts create token-creator
-
-        gcloud projects add-iam-policy-binding $PROJECT_ID \
-            --member="serviceAccount:token-creator@$PROJECT_ID.iam.gserviceaccount.com" \
-            --role="roles/iam.serviceAccountTokenCreator"
-        gcloud projects add-iam-policy-binding $PROJECT_ID \
-            --member="serviceAccount:token-creator@$PROJECT_ID.iam.gserviceaccount.com" \
-            --role="roles/run.invoker"
-        ```
-
-    * Add `Service Account Token Creator` role to the Cloud Build service account.
-        ```bash
-        gcloud projects add-iam-policy-binding $PROJECT_ID \
-            --member="serviceAccount:$PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
-            --role="roles/iam.serviceAccountTokenCreator"
-        ```
-    
-    * Cloud Build also requires permission to deploy Cloud Run services and administer artifacts: 
-
-        ```bash
-        gcloud projects add-iam-policy-binding $PROJECT_ID \
-            --member="serviceAccount:$PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
-            --role="roles/run.admin"
-        gcloud projects add-iam-policy-binding $PROJECT_ID \
-            --member="serviceAccount:$PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
-            --role="roles/iam.serviceAccountUser"
-        gcloud projects add-iam-policy-binding $PROJECT_ID \
-            --member="serviceAccount:$PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
-            --role="roles/artifactregistry.repoAdmin"
-        ```
 
 ## Maintenance & Support
 
