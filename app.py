@@ -27,12 +27,12 @@ except:
     protocol = "gs"
 
 try:
-    enable_extractive_answers = bool(os.environ["ENABLE_EXTRACTIVE_ANSWERS"])
+    enable_extractive_answers = os.environ["ENABLE_EXTRACTIVE_ANSWERS"].lower() == "true"
 except:
     enable_extractive_answers = False
 
 try:
-    enable_extractive_segments = bool(os.environ["ENABLE_EXTRACTIVE_SEGMENTS"])
+    enable_extractive_segments = os.environ["ENABLE_EXTRACTIVE_SEGMENTS"].lower() == "true"
 except:
     enable_extractive_segments = False
 
@@ -52,6 +52,11 @@ serving_config = client.serving_config_path(
     data_store=data_store,
     serving_config="default_config"
 )
+
+max_extractive_answer_count = 5*int(enable_extractive_answers)
+max_extractive_segment_count = 5*int(enable_extractive_segments)
+
+print(enable_extractive_answers, enable_extractive_segments, max_extractive_answer_count, max_extractive_segment_count)
 
 content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
     # For information about snippets, refer to:
