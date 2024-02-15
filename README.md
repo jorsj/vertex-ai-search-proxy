@@ -1,6 +1,8 @@
 # Vertex AI Search Proxy
 
-**Purpose:** This Python project builds a search API that interfaces with a configured Google Vertex AI Search data store. The core features of the project include:
+**Purpose:** 
+
+This Python project builds a search API that interfaces with a configured Google Vertex AI Search data store. The core features of the project include:
 
 -   **Enhanced Search**: Provides search results from the Vertex AI Search, enriched with elements like snippets, potential answers, answer segments, and summaries.
 -   **Security:**  Implements API Key-based authentication to protect the search API endpoints.
