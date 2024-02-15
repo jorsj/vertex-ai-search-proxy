@@ -47,7 +47,7 @@ Invoke will handle establishing local virtual environments, etc. Task definition
     ```
 2. Start the server with hot reload:
     ```bash
-uvicorn app:app --reload
+    uvicorn app:app --reload
     ```
 
 3.  **Send Requests:**  Send a POST request to the root endpoint (`/`), including:
