@@ -1,56 +1,37 @@
-# Cloud Run Template Microservice
+# Vertex AI Search Proxy
 
-A template repository for a Cloud Run microservice, written in Python
+**Purpose:** This Python project builds a search API that interfaces with a configured Google Vertex AI Search data store. The core features of the project include:
 
-[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run)
+-   **Enhanced Search**: Provides search results from the Vertex AI Search, enriched with elements like snippets, potential answers, answer segments, and summaries.
+-   **Security:**  Implements API Key-based authentication to protect the search API endpoints.
+-   **Flexible Content Delivery:**  Adapts to user-specified output paths and protocols for document links.
+-   **Generative AI Functionality:**  Leverages Google Vertex AI Search and its advanced language capabilities to offer informative summaries and concise extractions.
 
-## Prerequisite
+**Key Components:**
 
-* Enable the Cloud Run API via the [console](https://console.cloud.google.com/apis/library/run.googleapis.com?_ga=2.124941642.1555267850.1615248624-203055525.1615245957) or CLI:
+-   **Google Vertex AI Search Libraries:**  Uses the  `google.cloud`  and  `google.api_core`  libraries to connect with the Google Vertex AI Search. These libraries manage the interactions essential for querying the configured data store.
+-   **FastAPI:**  Provides the foundation for the web API framework, enabling RESTful endpoints for processing search requests and providing structured responses.
+-   **Pydantic:**  Ensures data validation for incoming requests and outgoing responses, enforcing structure and type safety.
+-   **Environment Variables:**  Employs environment variables to store sensitive information like API keys, the Google Cloud project ID, data store configuration, and settings for controlling summaries and extractions. This increases security and simplifies project configuration.
 
-```bash
-gcloud services enable run.googleapis.com
-```
+**Code Breakdown:**
 
-## Features
-
-* **Flask**: Web server framework
-* **Buildpack support** Tooling to build production-ready container images from source code and without a Dockerfile
-* **Dockerfile**: Container build instructions, if needed to replace buildpack for custom build
-* **SIGTERM handler**: Catch termination signal for cleanup before Cloud Run stops the container
-* **Service metadata**: Access service metadata, project ID and region, at runtime
-* **Local development utilities**: Auto-restart with changes and prettify logs
-* **Structured logging w/ Log Correlation** JSON formatted logger, parsable by Cloud Logging, with [automatic correlation of container logs to a request log](https://cloud.google.com/run/docs/logging#correlate-logs).
-* **Unit and System tests**: Basic unit and system tests setup for the microservice
-* **Task definition and execution**: Uses [invoke](http://www.pyinvoke.org/) to execute defined tasks in `tasks.py`.
-
-## Local Development
-
-### Cloud Code
-
-This template works with [Cloud Code](https://cloud.google.com/code), an IDE extension
-to let you rapidly iterate, debug, and run code on Kubernetes and Cloud Run.
-
-Learn how to use Cloud Code for:
-
-* Local development - [VSCode](https://cloud.google.com/code/docs/vscode/developing-a-cloud-run-service), [IntelliJ](https://cloud.google.com/code/docs/intellij/developing-a-cloud-run-service)
-
-* Local debugging - [VSCode](https://cloud.google.com/code/docs/vscode/debugging-a-cloud-run-service), [IntelliJ](https://cloud.google.com/code/docs/intellij/debugging-a-cloud-run-service)
-
-* Deploying a Cloud Run service - [VSCode](https://cloud.google.com/code/docs/vscode/deploying-a-cloud-run-service), [IntelliJ](https://cloud.google.com/code/docs/intellij/deploying-a-cloud-run-service)
-* Creating a new application from a custom template (`.template/templates.json` allows for use as an app template) - [VSCode](https://cloud.google.com/code/docs/vscode/create-app-from-custom-template), [IntelliJ](https://cloud.google.com/code/docs/intellij/create-app-from-custom-template)
-
-### CLI tooling
-
-To run the `invoke` commands below, install [`invoke`](https://www.pyinvoke.org/index.html) system wide: 
-
-```bash
-pip install invoke
-```
+1.  **Imports:**  Includes necessary libraries (FastAPI for web framework, security, Google Cloud/Discovery, etc.).
+2.  **Environment Variables:**  Loads required configuration settings from environment variables.
+3.  **Vertex AI Search Client:**  Instantiates a client for interacting with the Google Vertex AI Search service, establishing the connection.
+4.  **API Key Authentication:**  Defines authentication logic to control access to API endpoints.
+5.  **Data Models (Pydantic):**  Establishes 'Request', 'Response', and other data models, clarifying the expected structure of input and output.
+6.  **Health Check Endpoint (`healthcheck`)**: A basic endpoint (`/healthcheck`) for quick status verification.
+7.  **Search Endpoint (`/`)**:
+    -   Handles incoming search requests.
+    -   Constructs a detailed search query with advanced settings (snippets, extractive answers, query expansion, spell correction) for submission to the Vertex AI Search.
+    -   Processes search results retrieved from the Vertex AI Search.
+    -   Structures the search results, including additional details like snippets, extracted answers, extracted segments, and summaries.
+    -   Formats the response, adhering to the defined data model.
 
 Invoke will handle establishing local virtual environments, etc. Task definitions can be found in `tasks.py`.
 
-#### Local development
+**How to Use**
 
 1. Set environment variables:
     ```bash
@@ -66,41 +47,12 @@ Invoke will handle establishing local virtual environments, etc. Task definition
     ```
 2. Start the server with hot reload:
     ```bash
-    uvicorn app:app --reload
+uvicorn app:app --reload
     ```
 
-#### Deploying a Cloud Run service
-
-1. Set Project Id:
-    ```bash
-    export GOOGLE_CLOUD_PROJECT=<GCP_PROJECT_ID>
-    ```
-
-1. Enable the Artifact Registry API:
-    ```bash
-    gcloud services enable artifactregistry.googleapis.com
-    ```
-
-1. Create an Artifact Registry repo:
-    ```bash
-    export REPOSITORY="samples"
-    export REGION=us-central1
-    gcloud artifacts repositories create $REPOSITORY --location $REGION --repository-format "docker"
-    ```
-  
-1. Use the gcloud credential helper to authorize Docker to push to your Artifact Registry:
-    ```bash
-    gcloud auth configure-docker
-    ```
-
-2. Build the container using a buildpack:
-    ```bash
-    invoke build
-    ```
-3. Deploy to Cloud Run:
-    ```bash
-    invoke deploy
-    ```
+3.  **Send Requests:**  Send a POST request to the root endpoint (`/`), including:
+    -   A valid API key in the  `X-API-Key`  header.
+    -   Your search query in the  `query`  field of the JSON request body.
 
 ## Maintenance & Support
 
