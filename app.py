@@ -127,6 +127,36 @@ async def healthcheck() -> str:
     return "OK"
 
 
+def override_link(link: str):
+    if path != "":
+        return os.path.join(f"{protocol}://", path, os.path.basename(link))
+    else:
+        return link
+
+
+def extract_answers_segments(result, field: str) -> list[ExtractiveAnswer] | list[ExtractiveSegment]:
+
+    response = []
+    for extraction in result.document.derived_struct_data[field]:
+        try:
+            content = extraction["content"]
+            print(content)
+        except:
+            content = None
+        try:
+            page_number = extraction["pageNumber"]
+            print(page_number)
+        except:
+            page_number = None
+
+        item = ExtractiveAnswer(content=content, page_number=page_number) if field == "extractive_answers" else ExtractiveSegment(
+            content=content, page_number=page_number)
+
+        response.append(item)
+
+    return response
+
+
 @app.post("/")
 async def search(request: Request, api_key: str = Security(get_api_key)) -> Response:
 
@@ -151,16 +181,7 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
         except:
             title = None
         try:
-            if path != "":
-                print()
-                link = os.path.join(
-                    f"{protocol}://",
-                    path,
-                    os.path.basename(
-                        result.document.derived_struct_data["link"])
-                )
-            else:
-                link = result.document.derived_struct_data["link"]
+            link = override_link(result.document.derived_struct_data["link"])
         except:
             link = None
         try:
@@ -169,24 +190,13 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
         except:
             snippets = None
         try:
-            extractive_answers = [
-                ExtractiveAnswer(
-                    content=extractive_answer["content"],
-                    page_number=extractive_answer["pageNumber"]
-                )
-                for extractive_answer in result.document.derived_struct_data["extractive_answers"]
-            ]
+            extractive_answers = extract_answers_segments(
+                result, "extractive_answers")
         except:
             extractive_answers = None
-
         try:
-            extractive_segments = [
-                ExtractiveSegment(
-                    content=extractive_segment["content"],
-                    page_number=extractive_segment["pageNumber"]
-                )
-                for extractive_segment in result.document.derived_struct_data["extractive_segments"]
-            ]
+            extractive_segments = extract_answers_segments(
+                result, "extractive_segments")
         except:
             extractive_segments = None
 
