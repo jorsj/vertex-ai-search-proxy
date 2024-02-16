@@ -127,6 +127,13 @@ async def healthcheck() -> str:
     return "OK"
 
 
+def extract_snippets(result) -> list[str]:
+    snippets = []
+    for snippet in result.document.derived_struct_data["snippets"]:
+        snippets.append(snippet["snippet"])
+    return snippets
+
+
 def override_link(link: str):
     if path != "":
         return os.path.join(f"{protocol}://", path, os.path.basename(link))
@@ -140,12 +147,10 @@ def extract_answers_segments(result, field: str) -> list[ExtractiveAnswer] | lis
     for extraction in result.document.derived_struct_data[field]:
         try:
             content = extraction["content"]
-            print(content)
         except:
             content = None
         try:
             page_number = extraction["pageNumber"]
-            print(page_number)
         except:
             page_number = None
 
@@ -185,8 +190,7 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
         except:
             link = None
         try:
-            snippets = [snippet["snippet"]
-                        for snippet in result.document.derived_struct_data["snippets"]]
+            snippets = extract_snippets(result)
         except:
             snippets = None
         try:
