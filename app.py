@@ -1,12 +1,13 @@
 import os
 import uvicorn
+import re
 from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
-from google.cloud import discoveryengine
+from google.cloud import discoveryengine_v1alpha as discoveryengine
 from google.api_core.client_options import ClientOptions
-
+from google.cloud import storage
 
 api_keys = [
     os.environ["API_KEY"]
@@ -15,16 +16,6 @@ api_keys = [
 project = os.environ["GOOGLE_CLOUD_PROJECT"]
 location = os.environ["DATA_STORE_LOCATION"]
 data_store = os.environ["DATA_STORE_ID"]
-
-try:
-    path = os.environ["OUTPUT_PATH_OVERRIDE"]
-except:
-    path = ""
-
-try:
-    protocol = os.environ["OUTPUT_PROTOCOL"].lower()
-except:
-    protocol = "gs"
 
 try:
     enable_extractive_answers = os.environ["ENABLE_EXTRACTIVE_ANSWERS"].lower(
@@ -44,11 +35,13 @@ client_options = (
     else None
 )
 
-client = discoveryengine.SearchServiceClient(client_options=client_options)
+search_client = discoveryengine.SearchServiceClient(
+    client_options=client_options)
+storage_client = storage.Client()
 
 # Initialize request argument(s)
 
-serving_config = client.serving_config_path(
+serving_config = search_client.serving_config_path(
     project=project,
     location=location,
     data_store=data_store,
@@ -72,6 +65,9 @@ content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
         include_citations=True,
         ignore_adversarial_query=True,
         ignore_non_summary_seeking_query=True,
+        model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
+            version="preview"
+        )
     ),
     extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
         max_extractive_answer_count=5*int(enable_extractive_answers),
@@ -84,6 +80,26 @@ content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
 
 app = FastAPI(docs_url=None, redoc_url=None)
 api_key_header = APIKeyHeader(name="X-API-Key")
+
+
+def parse_gcs_uri(uri):
+    """Parses a Google Cloud Storage URI and returns the bucket and name.
+
+    Args:
+      uri: The Google Cloud Storage URI to parse.
+
+    Returns:
+      A tuple of (bucket, name), where bucket is the name of the bucket and name is
+      the name of the object within the bucket.
+
+    Raises:
+      ValueError: If the URI is not a valid Google Cloud Storage URI.
+    """
+
+    match = re.match(r"^gs://(?P<bucket>[^/]+)/(?P<name>.*)$", uri)
+    if not match:
+        raise ValueError("Invalid Google Cloud Storage URI: {}".format(uri))
+    return match.group("bucket"), match.group("name")
 
 
 def get_api_key(api_key_header: str = Security(api_key_header)) -> str:
@@ -109,12 +125,18 @@ class ExtractiveSegment (BaseModel):
     page_number: int | None = None
 
 
+class Metadata(BaseModel):
+    key: str | None
+    value: str | None
+
+
 class Document(BaseModel):
     title: str | None = None
     link: str | None = None
     snippets: list[str] | None = None
     extractive_answers: list[ExtractiveAnswer] | None = None
     extractive_segments: list[ExtractiveSegment] | None = None
+    metadata: list[Metadata] | None
 
 
 class Response(BaseModel):
@@ -127,6 +149,16 @@ async def healthcheck() -> str:
     return "OK"
 
 
+def get_metadata(uri) -> list[Metadata]:
+    metadata = []
+    bucket_name, blob_name = parse_gcs_uri(uri)
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.get_blob(blob_name)
+    for key, value in zip(blob.metadata.keys(), blob.metadata.values()):
+        metadata.append(Metadata(key=key, value=value))
+    return metadata
+
+
 def extract_snippets(result) -> list[str]:
     snippets = []
     for snippet in result.document.derived_struct_data["snippets"]:
@@ -134,15 +166,7 @@ def extract_snippets(result) -> list[str]:
     return snippets
 
 
-def override_link(link: str):
-    if path != "":
-        return os.path.join(f"{protocol}://", path, os.path.basename(link))
-    else:
-        return link
-
-
 def extract_answers_segments(result, field: str) -> list[ExtractiveAnswer] | list[ExtractiveSegment]:
-
     response = []
     for extraction in result.document.derived_struct_data[field]:
         try:
@@ -177,7 +201,7 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
             mode=discoveryengine.SearchRequest.SpellCorrectionSpec.Mode.AUTO
         ),
     )
-    pager = client.search(request)
+    pager = search_client.search(request)
 
     documents = []
     for result in pager.results:
@@ -186,7 +210,7 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
         except:
             title = None
         try:
-            link = override_link(result.document.derived_struct_data["link"])
+            link = result.document.derived_struct_data["link"]
         except:
             link = None
         try:
@@ -203,13 +227,18 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
                 result, "extractive_segments")
         except:
             extractive_segments = None
+        try:
+            metadata = get_metadata(link)
+        except:
+            metadata = None
 
         document = Document(
             title=title,
             link=link,
             snippets=snippets,
             extractive_answers=extractive_answers,
-            extractive_segments=extractive_segments
+            extractive_segments=extractive_segments,
+            metadata=metadata
         )
 
         documents.append(document)
