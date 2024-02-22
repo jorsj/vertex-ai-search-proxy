@@ -65,6 +65,7 @@ content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
         include_citations=False,
         ignore_adversarial_query=True,
         ignore_non_summary_seeking_query=True,
+        language_code="es",
         model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
             version="preview"
         )
