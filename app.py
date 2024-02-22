@@ -62,7 +62,7 @@ content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
     # https://cloud.google.com/generative-ai-app-builder/docs/get-search-summaries
     summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
         summary_result_count=5,
-        include_citations=True,
+        include_citations=False,
         ignore_adversarial_query=True,
         ignore_non_summary_seeking_query=True,
         model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
