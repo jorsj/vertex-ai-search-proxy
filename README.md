@@ -33,13 +33,13 @@ pip install -r requirements.txt
 2. Environment Variables:
 Export the following environment variables:
 
-`API_KEY`: Your desired API key for authentication.
-`GOOGLE_CLOUD_PROJECT`: Your Google Cloud project ID.
-`DATA_STORE_LOCATION`: Region or global (for global data stores).
-`DATA_STORE_ID`: ID of your existing Vertex AI data store.
-`ENABLE_EXTRACTIVE_ANSWERS`: (Optional) Set to true to enable extractive answers.
-`ENABLE_EXTRACTIVE_SEGMENTS`: (Optional) Set to true to enable extractive segments.
-`PORT`: The port where you want to run the server (default: 8000).
+* `API_KEY`: Your desired API key for authentication.
+* `GOOGLE_CLOUD_PROJECT`: Your Google Cloud project ID.
+* `DATA_STORE_LOCATION`: Region or global (for global data stores).
+* `DATA_STORE_ID`: ID of your existing Vertex AI data store.
+* `ENABLE_EXTRACTIVE_ANSWERS`: (Optional) Set to true to enable extractive answers.
+* `ENABLE_EXTRACTIVE_SEGMENTS`: (Optional) Set to true to enable extractive segments.
+* `PORT`: The port where you want to run the server (default: 8000).
 
 ## Usage
 
