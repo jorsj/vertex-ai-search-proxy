@@ -104,6 +104,19 @@ def parse_gcs_uri(uri):
 
 
 def get_api_key(api_key_header: str = Security(api_key_header)) -> str:
+    """Validates an API key provided in a request header.
+
+    Args:
+        api_key_header (str): The API key value extracted from the request header 
+                              (using the 'api_key_header' Security dependency).
+
+    Returns:
+        str: The validated API key.
+
+    Raises:
+        HTTPException: If the provided API key is invalid or missing, with a 
+                       status code of 401 (Unauthorized).
+    """
     if api_key_header in api_keys:
         return api_key_header
     raise HTTPException(
@@ -147,10 +160,43 @@ class Response(BaseModel):
 
 @app.get("/healthcheck")
 async def healthcheck() -> str:
+    """
+    Provides a simple health check endpoint.
+
+    This asynchronous function is intended for basic status checks within a 
+    web application or service.
+
+    Returns:
+        str: The string "OK" to signal operational status.
+    """
     return "OK"
 
 
 def get_metadata(uri) -> list[Metadata]:
+    """
+    Extracts metadata from a Google Cloud Storage object and returns it as a list of Metadata objects.
+
+    Args:
+        uri (str):  A Google Cloud Storage URI in the format "gs://bucket_name/object_name"
+
+    Returns:
+        list[Metadata]: A list of Metadata objects, where each object represents a single key-value 
+                        pair of the object's metadata.
+
+    Raises:
+        ValueError: If the provided URI is not a valid Google Cloud Storage URI. 
+        GoogleCloudError: If there is an error communicating with the Google Cloud Storage service.
+    
+    Example:
+        >>> uri = "gs://my-bucket/data.csv"
+        >>> metadata_list = get_metadata(uri)
+        >>> for item in metadata_list:
+        ...     print(item.key, item.value)
+        ...
+        content-type text/csv
+        cache-control no-cache
+        ... 
+    """
     metadata = []
     bucket_name, blob_name = parse_gcs_uri(uri)
     bucket = storage_client.bucket(bucket_name)
@@ -161,6 +207,17 @@ def get_metadata(uri) -> list[Metadata]:
 
 
 def extract_snippets(result) -> list[str]:
+    """Extracts snippets from a given result object.
+
+    Args:
+        result: A JSON object containing the data to extract snippets from.
+                Assumes the 'result' object has a specific nested structure:
+                    result.document.derived_struct_data["snippets"]
+
+    Returns:
+        list[str]: A list of strings, where each string is a snippet extracted 
+                   from the result.
+    """
     snippets = []
     for snippet in result.document.derived_struct_data["snippets"]:
         snippets.append(snippet["snippet"])
@@ -168,6 +225,18 @@ def extract_snippets(result) -> list[str]:
 
 
 def extract_answers_segments(result, field: str) -> list[ExtractiveAnswer] | list[ExtractiveSegment]:
+    """Processes extractions from a result object, handling potential missing fields.
+
+    Args:
+        result: A JSON object containing data with a specific nested structure:
+                result.document.derived_struct_data[field]
+        field (str): The name of the field within 'derived_struct_data' to process.
+                     Determines the type of object to create (ExtractiveAnswer or ExtractiveSegment).
+
+    Returns:
+        list: A list of either ExtractiveAnswer or ExtractiveSegment objects, 
+              populated with data from the extractions.
+    """
     response = []
     for extraction in result.document.derived_struct_data[field]:
         try:
@@ -189,7 +258,17 @@ def extract_answers_segments(result, field: str) -> list[ExtractiveAnswer] | lis
 
 @app.post("/")
 async def search(request: Request, api_key: str = Security(get_api_key)) -> Response:
+    """Handles search requests for the application.
 
+    Args:
+        request (Request): Contains the incoming search query and other request data.
+        api_key (str):  An API key for authentication (retrieved using the get_api_key function).
+
+    Returns:
+        Response: A structured response object containing:
+            * summary (str): An optional summary of the search results (if available).
+            * documents (list):  A list of Document objects representing search results. 
+    """
     request = discoveryengine.SearchRequest(
         serving_config=serving_config,
         query=request.query,
