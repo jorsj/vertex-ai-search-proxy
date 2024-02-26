@@ -61,7 +61,7 @@ content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
     # For information about search summaries, refer to:
     # https://cloud.google.com/generative-ai-app-builder/docs/get-search-summaries
     summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
-        summary_result_count=5,
+        summary_result_count=3,
         include_citations=False,
         ignore_adversarial_query=True,
         ignore_non_summary_seeking_query=True,
@@ -272,7 +272,7 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
     request = discoveryengine.SearchRequest(
         serving_config=serving_config,
         query=request.query,
-        page_size=10,
+        page_size=3,
         content_search_spec=content_search_spec,
         query_expansion_spec=discoveryengine.SearchRequest.QueryExpansionSpec(
             condition=discoveryengine.SearchRequest.QueryExpansionSpec.Condition.AUTO,
