@@ -15,7 +15,6 @@ api_keys = [
 
 project = os.environ["GOOGLE_CLOUD_PROJECT"]
 location = os.environ["DATA_STORE_LOCATION"]
-data_store = os.environ["DATA_STORE_ID"]
 
 try:
     enable_extractive_answers = os.environ["ENABLE_EXTRACTIVE_ANSWERS"].lower(
@@ -36,48 +35,11 @@ client_options = (
 )
 
 search_client = discoveryengine.SearchServiceClient(
-    client_options=client_options)
+    client_options=client_options
+)
 storage_client = storage.Client()
 
 # Initialize request argument(s)
-
-serving_config = search_client.serving_config_path(
-    project=project,
-    location=location,
-    data_store=data_store,
-    serving_config="default_config"
-)
-
-max_extractive_answer_count = 5*int(enable_extractive_answers)
-max_extractive_segment_count = 5*int(enable_extractive_segments)
-
-
-content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
-    # For information about snippets, refer to:
-    # https://cloud.google.com/generative-ai-app-builder/docs/snippets
-    snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
-        return_snippet=True
-    ),
-    # For information about search summaries, refer to:
-    # https://cloud.google.com/generative-ai-app-builder/docs/get-search-summaries
-    summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
-        summary_result_count=3,
-        include_citations=False,
-        ignore_adversarial_query=True,
-        ignore_non_summary_seeking_query=True,
-        language_code="es",
-        model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
-            version="preview"
-        )
-    ),
-    extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
-        max_extractive_answer_count=5*int(enable_extractive_answers),
-        max_extractive_segment_count=5*int(enable_extractive_segments),
-        return_extractive_segment_score=True,
-        num_previous_segments=0,
-        num_next_segments=0
-    )
-)
 
 app = FastAPI(docs_url=None, redoc_url=None)
 api_key_header = APIKeyHeader(name="X-API-Key")
@@ -256,8 +218,8 @@ def extract_answers_segments(result, field: str) -> list[ExtractiveAnswer] | lis
     return response
 
 
-@app.post("/")
-async def search(request: Request, api_key: str = Security(get_api_key)) -> Response:
+@app.post("/search/{data_store}")
+async def search(data_store:str, request: Request, api_key: str = Security(get_api_key)) -> Response:
     """Handles search requests for the application.
 
     Args:
@@ -269,6 +231,44 @@ async def search(request: Request, api_key: str = Security(get_api_key)) -> Resp
             * summary (str): An optional summary of the search results (if available).
             * documents (list):  A list of Document objects representing search results. 
     """
+    
+    serving_config = search_client.serving_config_path(
+        project=project,
+        location=location,
+        data_store=data_store,
+        serving_config="default_config"
+    )
+
+    max_extractive_answer_count = 5*int(enable_extractive_answers)
+    max_extractive_segment_count = 5*int(enable_extractive_segments)
+
+    content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
+        # For information about snippets, refer to:
+        # https://cloud.google.com/generative-ai-app-builder/docs/snippets
+        snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+            return_snippet=True
+        ),
+        # For information about search summaries, refer to:
+        # https://cloud.google.com/generative-ai-app-builder/docs/get-search-summaries
+        summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
+            summary_result_count=3,
+            include_citations=False,
+            ignore_adversarial_query=True,
+            ignore_non_summary_seeking_query=True,
+            language_code="es",
+            model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
+                version="preview"
+            )
+        ),
+        extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
+            max_extractive_answer_count=5*int(enable_extractive_answers),
+            max_extractive_segment_count=5*int(enable_extractive_segments),
+            return_extractive_segment_score=True,
+            num_previous_segments=0,
+            num_next_segments=0
+        )
+    )
+    
     request = discoveryengine.SearchRequest(
         serving_config=serving_config,
         query=request.query,
