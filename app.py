@@ -3,7 +3,8 @@ import uvicorn
 import re
 from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional
 
 from google.cloud import discoveryengine_v1alpha as discoveryengine
 from google.api_core.client_options import ClientOptions
@@ -15,18 +16,6 @@ api_keys = [
 
 project = os.environ["GOOGLE_CLOUD_PROJECT"]
 location = os.environ["DATA_STORE_LOCATION"]
-
-try:
-    enable_extractive_answers = os.environ["ENABLE_EXTRACTIVE_ANSWERS"].lower(
-    ) == "true"
-except:
-    enable_extractive_answers = False
-
-try:
-    enable_extractive_segments = os.environ["ENABLE_EXTRACTIVE_SEGMENTS"].lower(
-    ) == "true"
-except:
-    enable_extractive_segments = False
 
 client_options = (
     ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
@@ -45,18 +34,17 @@ app = FastAPI(docs_url=None, redoc_url=None)
 api_key_header = APIKeyHeader(name="X-API-Key")
 
 
-def parse_gcs_uri(uri):
-    """Parses a Google Cloud Storage URI and returns the bucket and name.
+def parse_gcs_uri(uri: str) -> tuple[str, str]:
+    """Parses a Google Cloud Storage URI.
 
     Args:
-      uri: The Google Cloud Storage URI to parse.
+        uri: The Google Cloud Storage URI to parse.
 
     Returns:
-      A tuple of (bucket, name), where bucket is the name of the bucket and name is
-      the name of the object within the bucket.
-
+        A tuple containing the bucket name and object name.
+    
     Raises:
-      ValueError: If the URI is not a valid Google Cloud Storage URI.
+        ValueError: If the URI is not a valid Google Cloud Storage URI.
     """
 
     match = re.match(r"^gs://(?P<bucket>[^/]+)/(?P<name>.*)$", uri)
@@ -69,11 +57,11 @@ def get_api_key(api_key_header: str = Security(api_key_header)) -> str:
     """Validates an API key provided in a request header.
 
     Args:
-        api_key_header (str): The API key value extracted from the request header 
-                              (using the 'api_key_header' Security dependency).
+        api_key_header: The API key value extracted from the request header 
+                        using the 'api_key_header' Security dependency.
 
     Returns:
-        str: The validated API key.
+        The validated API key.
 
     Raises:
         HTTPException: If the provided API key is invalid or missing, with a 
@@ -88,25 +76,41 @@ def get_api_key(api_key_header: str = Security(api_key_header)) -> str:
 
 
 class Request(BaseModel):
+    """Represents a search request."""
     query: str
-
+    include_citations: Optional[bool] = Field(default=False)
+    language_code: str
+    summary_result_count: Optional[int] = Field(default=3)
+    return_extractive_segment_score: Optional[bool] = Field(default=True)
+    return_snippet: Optional[bool] = Field(default=True)
+    ignore_adversarial_query: Optional[bool] = Field(default=True)
+    ignore_non_summary_seeking_query: Optional[bool] = Field(default=True)
+    max_extractive_answer_count: Optional[int] = Field(default=3)
+    max_extractive_segment_count: Optional[int] = Field(default=3)
+    num_previous_segments: Optional[int] = Field(default=0)
+    num_next_segments: Optional[int] = Field(default=0)
+    page_size: Optional[int] = Field(default=3)
 
 class ExtractiveAnswer (BaseModel):
+    """Represents an extractive answer."""
     content: str | None = None
     page_number: int | None = None
 
 
 class ExtractiveSegment (BaseModel):
+    """Represents an extractive segment."""
     content: str | None = None
     page_number: int | None = None
 
 
 class Metadata(BaseModel):
+    """Represents a metadata key-value pair."""
     key: str | None
     value: str | None
 
 
 class Document(BaseModel):
+    """Represents a document in the search results."""
     title: str | None = None
     link: str | None = None
     snippets: list[str] | None = None
@@ -116,6 +120,7 @@ class Document(BaseModel):
 
 
 class Response(BaseModel):
+    """Represents a search response."""
     summary: str | None = None
     documents: list[Document] | None = None
 
@@ -125,39 +130,25 @@ async def healthcheck() -> str:
     """
     Provides a simple health check endpoint.
 
-    This asynchronous function is intended for basic status checks within a 
-    web application or service.
-
     Returns:
         str: The string "OK" to signal operational status.
     """
     return "OK"
 
 
-def get_metadata(uri) -> list[Metadata]:
+def get_metadata(uri: str) -> list[Metadata]:
     """
-    Extracts metadata from a Google Cloud Storage object and returns it as a list of Metadata objects.
-
+    Extracts metadata from a Google Cloud Storage object.
+    
     Args:
-        uri (str):  A Google Cloud Storage URI in the format "gs://bucket_name/object_name"
+        uri: A Google Cloud Storage URI in the format "gs://bucket_name/object_name".
 
     Returns:
-        list[Metadata]: A list of Metadata objects, where each object represents a single key-value 
-                        pair of the object's metadata.
+        A list of Metadata objects representing the object's metadata.
 
     Raises:
         ValueError: If the provided URI is not a valid Google Cloud Storage URI. 
         GoogleCloudError: If there is an error communicating with the Google Cloud Storage service.
-    
-    Example:
-        >>> uri = "gs://my-bucket/data.csv"
-        >>> metadata_list = get_metadata(uri)
-        >>> for item in metadata_list:
-        ...     print(item.key, item.value)
-        ...
-        content-type text/csv
-        cache-control no-cache
-        ... 
     """
     metadata = []
     bucket_name, blob_name = parse_gcs_uri(uri)
@@ -168,17 +159,14 @@ def get_metadata(uri) -> list[Metadata]:
     return metadata
 
 
-def extract_snippets(result) -> list[str]:
-    """Extracts snippets from a given result object.
+def extract_snippets(result: dict) -> list[str]:
+    """Extracts snippets from a search result.
 
     Args:
-        result: A JSON object containing the data to extract snippets from.
-                Assumes the 'result' object has a specific nested structure:
-                    result.document.derived_struct_data["snippets"]
+        result: A search result object.
 
     Returns:
-        list[str]: A list of strings, where each string is a snippet extracted 
-                   from the result.
+        A list of snippets.
     """
     snippets = []
     for snippet in result.document.derived_struct_data["snippets"]:
@@ -186,18 +174,15 @@ def extract_snippets(result) -> list[str]:
     return snippets
 
 
-def extract_answers_segments(result, field: str) -> list[ExtractiveAnswer] | list[ExtractiveSegment]:
-    """Processes extractions from a result object, handling potential missing fields.
+def extract_answers_segments(result: dict, field: str) -> list[ExtractiveAnswer] | list[ExtractiveSegment]:
+    """Extracts extractive answers or segments from a search result.
 
     Args:
-        result: A JSON object containing data with a specific nested structure:
-                result.document.derived_struct_data[field]
-        field (str): The name of the field within 'derived_struct_data' to process.
-                     Determines the type of object to create (ExtractiveAnswer or ExtractiveSegment).
+        result: A search result object.
+        field: The field to extract, either "extractive_answers" or "extractive_segments".
 
     Returns:
-        list: A list of either ExtractiveAnswer or ExtractiveSegment objects, 
-              populated with data from the extractions.
+        A list of ExtractiveAnswer or ExtractiveSegment objects.
     """
     response = []
     for extraction in result.document.derived_struct_data[field]:
@@ -219,17 +204,16 @@ def extract_answers_segments(result, field: str) -> list[ExtractiveAnswer] | lis
 
 
 @app.post("/search/{data_store}")
-async def search(data_store:str, request: Request, api_key: str = Security(get_api_key)) -> Response:
-    """Handles search requests for the application.
+async def search(data_store: str, request: Request, api_key: str = Security(get_api_key)) -> Response:
+    """Handles search requests.
 
     Args:
-        request (Request): Contains the incoming search query and other request data.
-        api_key (str):  An API key for authentication (retrieved using the get_api_key function).
+        data_store: The data store to search.
+        request: The search request.
+        api_key: The API key for authentication.
 
     Returns:
-        Response: A structured response object containing:
-            * summary (str): An optional summary of the search results (if available).
-            * documents (list):  A list of Document objects representing search results. 
+        The search response.
     """
     
     serving_config = search_client.serving_config_path(
@@ -238,41 +222,38 @@ async def search(data_store:str, request: Request, api_key: str = Security(get_a
         data_store=data_store,
         serving_config="default_config"
     )
-
-    max_extractive_answer_count = 5*int(enable_extractive_answers)
-    max_extractive_segment_count = 5*int(enable_extractive_segments)
-
+    
     content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
         # For information about snippets, refer to:
         # https://cloud.google.com/generative-ai-app-builder/docs/snippets
         snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
-            return_snippet=True
+            return_snippet=request.return_snippet
         ),
         # For information about search summaries, refer to:
         # https://cloud.google.com/generative-ai-app-builder/docs/get-search-summaries
         summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
-            summary_result_count=3,
-            include_citations=False,
-            ignore_adversarial_query=True,
-            ignore_non_summary_seeking_query=True,
-            language_code="es",
+            summary_result_count=request.summary_result_count,
+            include_citations=request.include_citations,
+            ignore_adversarial_query=request.ignore_adversarial_query,
+            ignore_non_summary_seeking_query=request.ignore_non_summary_seeking_query,
+            language_code=request.language_code,
             model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
                 version="preview"
             )
         ),
         extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
-            max_extractive_answer_count=5*int(enable_extractive_answers),
-            max_extractive_segment_count=5*int(enable_extractive_segments),
-            return_extractive_segment_score=True,
-            num_previous_segments=0,
-            num_next_segments=0
+            max_extractive_answer_count=request.max_extractive_answer_count,
+            max_extractive_segment_count=request.max_extractive_segment_count,
+            return_extractive_segment_score=request.return_extractive_segment_score,
+            num_previous_segments=request.num_previous_segments,
+            num_next_segments=request.num_next_segments
         )
     )
     
     request = discoveryengine.SearchRequest(
         serving_config=serving_config,
         query=request.query,
-        page_size=3,
+        page_size=request.page_size,
         content_search_spec=content_search_spec,
         query_expansion_spec=discoveryengine.SearchRequest.QueryExpansionSpec(
             condition=discoveryengine.SearchRequest.QueryExpansionSpec.Condition.AUTO,
@@ -281,6 +262,7 @@ async def search(data_store:str, request: Request, api_key: str = Security(get_a
             mode=discoveryengine.SearchRequest.SpellCorrectionSpec.Mode.AUTO
         ),
     )
+    
     pager = search_client.search(request)
 
     documents = []

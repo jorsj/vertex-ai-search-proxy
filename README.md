@@ -1,107 +1,96 @@
 # Vertex AI Search Proxy
 
-This project provides a FastAPI-based proxy for interacting with Agent Builder Search (formerly Discovery Engine). It enables you to perform searches on your data store, retrieve documents, snippets, and summaries.
+This project provides a simple FastAPI-based proxy for interacting with the Vertex AI Search service (previously known as Discovery Engine). It allows you to:
 
-## Features
+- Send search queries to a specified data store.
+- Retrieve search results, including:
+  - Document titles and links.
+  - Snippets.
+  - Answers.
+  - Segments.
+  - Metadata.
+- Get a summarized overview of the search results.
 
-- Search a specified Agent Builder Search data store.
-- Retrieve document details, including title, link, and snippets.
-- Get extractive answers and segments.
-- Extract metadata from documents stored in Google Cloud Storage.
-- Obtain a search summary.
-- Basic health check endpoint.
+## Getting Started
 
-## Requirements
+### Prerequisites
 
-- Python 3.7+
-- Virtual environment (recommended)
+- **Google Cloud Project:** An active Google Cloud Project with the Vertex AI API enabled.
+- **Vertex AI Search Data Store:** A configured data store within your project.
+- **API Key:**  An API key for authentication.
 
-## Installation
+### Installation
 
 1. Clone the repository:
-
 ```bash
-  git clone https://github.com/jorsj/vertex-ai-search-proxy.git
+git clone https://github.com/jorsj/vertex-ai-search-proxy.git
+cd vertex-ai-search-proxy
+```
+2. Install the required Python libraries:
+```bash
+pip install -r requirements.txt 
+```
+3. Build the Docker image:
+```bash
+docker build -t vertex-ai-search-proxy . 
 ```
 
-2. Navigate to the project directory:
-
+4. Set the environment variables:
 ```bash
-  cd vertex-ai-search-proxy
+export GOOGLE_CLOUD_PROJECT=<your_project_id>
+export DATA_STORE_LOCATION=<your_data_store_region> # us, eu or global
+export API_KEY=<your_api_key>
+export PORT=<your_desired_port> # Example: 8000
 ```
 
-3. Create and activate a virtual environment (optional but recommended):
-
+5. Run the application:
 ```bash
-  python3 -m venv env
-  source env/bin/activate
-```
-
-4. Install the required packages:
-
-```bash
-  pip install -r requirements.txt
-```
-
-## Configuration
-
-1. Set up environment variables (in a `.env` file or directly):
-  - `API_KEY`: Your API key for authentication.
-  - `GOOGLE_CLOUD_PROJECT`: Your Google Cloud project ID.
-  - `DATA_STORE_LOCATION`: The location of your Agent Builder Search data store (e.g., 'us-central1').
-  - `ENABLE_EXTRACTIVE_ANSWERS`: Set to "true" to enable extractive answers (default: "false").
-  - `ENABLE_EXTRACTIVE_SEGMENTS`: Set to "true" to enable extractive segments (default: "false").
-  - `PORT`: The port the application will run on (default: 8000).
-
-2.  Build the Docker image:
-
-```bash
-  docker build -t vertex-ai-search-proxy .
-```
-
-## Running the Application
-
-1.  Run the application using Docker:
-
-```bash
-  docker run -p 8000:8000 -e API_KEY=your_api_key -e GOOGLE_CLOUD_PROJECT=your_project_id -e DATA_STORE_LOCATION=your_data_store_location vertex-ai-search-proxy 
-```
-
-  Replace `your_api_key`, `your_project_id`, and `your_data_store_location` with your actual values.
-
-2.   Alternatively, run the application directly:
-```bash
-  uvicorn app:app --reload
+docker run -d -p $PORT:$PORT -e GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT  -e DATA_STORE_LOCATION=$DATA_STORE_LOCATION  -e API_KEY=$API_KEY -e PORT=$PORT vertex-ai-search-proxy 
 ```
 
 ## Usage
 
-Once the application is running, you can send POST requests to the `/search/{data_store}` endpoint. The `{data_store}` placeholder represents the ID of your Agent Builder Search data store. 
+The API proxy provides the following endpoint:
 
-**Request Body:**
+- **`/search/{data_store}` (POST):**  
+  - Performs a search against the specified data store. 
+  - Accepts request data in the following structure:
+  ```json
+  {
+    "query": "your search query",
+    "language_code": "en",
+    "include_citations": true,                  // (Optional)
+    "summary_result_count": 3,                  // (Optional)
+    "return_extractive_segment_score": true,    // (Optional)
+    "return_snippet": true,                     // (Optional)
+    "ignore_adversarial_query": true,           // (Optional)
+    "ignore_non_summary_seeking_query": true,   // (Optional)
+    "max_extractive_answer_count": 3,           // (Optional)
+    "max_extractive_segment_count": 3,          // (Optional)
+    "num_previous_segments": 0,                 // (Optional)
+    "num_next_segments": 0,                     // (Optional)
+    "page_size": 3                              // (Optional)
+  } 
+  ```
+- Returns a JSON response containing the search results and an optional summary.
 
-```json
-{
-"query": "your search query"
-}
-```
-
-**Headers:**
-
-- `X-API-Key`: Your API key.
-
-**Example:**
+### Example Request: 
 
 ```bash
-curl -X POST -H "X-API-Key: your_api_key" -H "Content-Type: application/json" -d '{"query": "example query"}' http://localhost:8000/search/your_data_store_id 
+curl -X POST \
+     -H "Content-Type: application/json" \
+     -H "X-API-Key: your_api_key" \
+     -d '{ "query": "example query", "language_code": "en" }' \
+     http://localhost:8000/search/your_data_store_id
 ```
 
-The API will return a JSON response containing the search results, including documents, snippets, summaries, and other relevant information. 
+## Files
 
-## Contributing
+- **`app.py`:** The main FastAPI application.
+- **`requirements.txt`:**  Lists the required Python packages for the project.
+- **`Dockerfile`:**  Contains instructions for building the Docker image. 
 
-Contributions are welcome! Please feel free to open issues or submit pull requests.
+## Notes
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details. 
+- Remember to create an API key in your Google Cloud project and configure it securely.
+- This is a basic implementation, and you can extend it further based on your needs.
