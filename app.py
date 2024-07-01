@@ -1,6 +1,7 @@
 import os
 import uvicorn
 import re
+import logging
 from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
@@ -9,10 +10,9 @@ from typing import Optional
 from google.cloud import discoveryengine_v1alpha as discoveryengine
 from google.api_core.client_options import ClientOptions
 from google.cloud import storage
+from google.cloud.exceptions import GoogleCloudError
 
-api_keys = [
-    os.environ["API_KEY"]
-]
+api_keys = [os.environ["API_KEY"]]
 
 project = os.environ["GOOGLE_CLOUD_PROJECT"]
 location = os.environ["DATA_STORE_LOCATION"]
@@ -23,9 +23,7 @@ client_options = (
     else None
 )
 
-search_client = discoveryengine.SearchServiceClient(
-    client_options=client_options
-)
+search_client = discoveryengine.SearchServiceClient(client_options=client_options)
 storage_client = storage.Client()
 
 # Initialize request argument(s)
@@ -42,7 +40,7 @@ def parse_gcs_uri(uri: str) -> tuple[str, str]:
 
     Returns:
         A tuple containing the bucket name and object name.
-    
+
     Raises:
         ValueError: If the URI is not a valid Google Cloud Storage URI.
     """
@@ -57,14 +55,14 @@ def get_api_key(api_key_header: str = Security(api_key_header)) -> str:
     """Validates an API key provided in a request header.
 
     Args:
-        api_key_header: The API key value extracted from the request header 
+        api_key_header: The API key value extracted from the request header
                         using the 'api_key_header' Security dependency.
 
     Returns:
         The validated API key.
 
     Raises:
-        HTTPException: If the provided API key is invalid or missing, with a 
+        HTTPException: If the provided API key is invalid or missing, with a
                        status code of 401 (Unauthorized).
     """
     if api_key_header in api_keys:
@@ -77,6 +75,7 @@ def get_api_key(api_key_header: str = Security(api_key_header)) -> str:
 
 class Request(BaseModel):
     """Represents a search request."""
+
     query: str
     include_citations: Optional[bool] = Field(default=False)
     language_code: str
@@ -91,26 +90,31 @@ class Request(BaseModel):
     num_next_segments: Optional[int] = Field(default=0)
     page_size: Optional[int] = Field(default=3)
 
-class ExtractiveAnswer (BaseModel):
+
+class ExtractiveAnswer(BaseModel):
     """Represents an extractive answer."""
+
     content: str | None = None
     page_number: int | None = None
 
 
-class ExtractiveSegment (BaseModel):
+class ExtractiveSegment(BaseModel):
     """Represents an extractive segment."""
+
     content: str | None = None
     page_number: int | None = None
 
 
 class Metadata(BaseModel):
     """Represents a metadata key-value pair."""
+
     key: str | None
     value: str | None
 
 
 class Document(BaseModel):
     """Represents a document in the search results."""
+
     title: str | None = None
     link: str | None = None
     snippets: list[str] | None = None
@@ -121,6 +125,7 @@ class Document(BaseModel):
 
 class Response(BaseModel):
     """Represents a search response."""
+
     summary: str | None = None
     documents: list[Document] | None = None
 
@@ -139,7 +144,7 @@ async def healthcheck() -> str:
 def get_metadata(uri: str) -> list[Metadata]:
     """
     Extracts metadata from a Google Cloud Storage object.
-    
+
     Args:
         uri: A Google Cloud Storage URI in the format "gs://bucket_name/object_name".
 
@@ -147,16 +152,22 @@ def get_metadata(uri: str) -> list[Metadata]:
         A list of Metadata objects representing the object's metadata.
 
     Raises:
-        ValueError: If the provided URI is not a valid Google Cloud Storage URI. 
+        ValueError: If the provided URI is not a valid Google Cloud Storage URI.
         GoogleCloudError: If there is an error communicating with the Google Cloud Storage service.
     """
     metadata = []
-    bucket_name, blob_name = parse_gcs_uri(uri)
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.get_blob(blob_name)
-    for key, value in zip(blob.metadata.keys(), blob.metadata.values()):
-        metadata.append(Metadata(key=key, value=value))
-    return metadata
+    try:
+        bucket_name, blob_name = parse_gcs_uri(uri)
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.get_blob(blob_name)
+        for key, value in zip(blob.metadata.keys(), blob.metadata.values()):
+            metadata.append(Metadata(key=key, value=value))
+        return metadata
+    except ValueError as e:
+        logging.error(f"Error: Invalid Google Cloud Storage URI: {e}")
+    except GoogleCloudError as e:
+        logging.error(f"Error communicating with Google Cloud Storage: {e}")
+    return metadata  # Return empty list if errors occur
 
 
 def extract_snippets(result: dict) -> list[str]:
@@ -174,7 +185,9 @@ def extract_snippets(result: dict) -> list[str]:
     return snippets
 
 
-def extract_answers_segments(result: dict, field: str) -> list[ExtractiveAnswer] | list[ExtractiveSegment]:
+def extract_answers_segments(
+    result: dict, field: str
+) -> list[ExtractiveAnswer] | list[ExtractiveSegment]:
     """Extracts extractive answers or segments from a search result.
 
     Args:
@@ -195,8 +208,11 @@ def extract_answers_segments(result: dict, field: str) -> list[ExtractiveAnswer]
         except:
             page_number = None
 
-        item = ExtractiveAnswer(content=content, page_number=page_number) if field == "extractive_answers" else ExtractiveSegment(
-            content=content, page_number=page_number)
+        item = (
+            ExtractiveAnswer(content=content, page_number=page_number)
+            if field == "extractive_answers"
+            else ExtractiveSegment(content=content, page_number=page_number)
+        )
 
         response.append(item)
 
@@ -204,7 +220,9 @@ def extract_answers_segments(result: dict, field: str) -> list[ExtractiveAnswer]
 
 
 @app.post("/search/{data_store}")
-async def search(data_store: str, request: Request, api_key: str = Security(get_api_key)) -> Response:
+async def search(
+    data_store: str, request: Request, api_key: str = Security(get_api_key)
+) -> Response:
     """Handles search requests.
 
     Args:
@@ -215,14 +233,14 @@ async def search(data_store: str, request: Request, api_key: str = Security(get_
     Returns:
         The search response.
     """
-    
+
     serving_config = search_client.serving_config_path(
         project=project,
         location=location,
         data_store=data_store,
-        serving_config="default_config"
+        serving_config="default_config",
     )
-    
+
     content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
         # For information about snippets, refer to:
         # https://cloud.google.com/generative-ai-app-builder/docs/snippets
@@ -239,17 +257,17 @@ async def search(data_store: str, request: Request, api_key: str = Security(get_
             language_code=request.language_code,
             model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
                 version="preview"
-            )
+            ),
         ),
         extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
             max_extractive_answer_count=request.max_extractive_answer_count,
             max_extractive_segment_count=request.max_extractive_segment_count,
             return_extractive_segment_score=request.return_extractive_segment_score,
             num_previous_segments=request.num_previous_segments,
-            num_next_segments=request.num_next_segments
-        )
+            num_next_segments=request.num_next_segments,
+        ),
     )
-    
+
     request = discoveryengine.SearchRequest(
         serving_config=serving_config,
         query=request.query,
@@ -262,7 +280,7 @@ async def search(data_store: str, request: Request, api_key: str = Security(get_
             mode=discoveryengine.SearchRequest.SpellCorrectionSpec.Mode.AUTO
         ),
     )
-    
+
     pager = search_client.search(request)
 
     documents = []
@@ -280,19 +298,17 @@ async def search(data_store: str, request: Request, api_key: str = Security(get_
         except:
             snippets = None
         try:
-            extractive_answers = extract_answers_segments(
-                result, "extractive_answers")
+            extractive_answers = extract_answers_segments(result, "extractive_answers")
         except:
             extractive_answers = None
         try:
             extractive_segments = extract_answers_segments(
-                result, "extractive_segments")
+                result, "extractive_segments"
+            )
         except:
             extractive_segments = None
-        try:
-            metadata = get_metadata(link)
-        except:
-            metadata = None
+
+        metadata = get_metadata(link)
 
         document = Document(
             title=title,
@@ -300,7 +316,7 @@ async def search(data_store: str, request: Request, api_key: str = Security(get_
             snippets=snippets,
             extractive_answers=extractive_answers,
             extractive_segments=extractive_segments,
-            metadata=metadata
+            metadata=metadata,
         )
 
         documents.append(document)
@@ -310,11 +326,9 @@ async def search(data_store: str, request: Request, api_key: str = Security(get_
     except:
         summary = None
 
-    response = Response(
-        summary=summary,
-        documents=documents
-    )
+    response = Response(summary=summary, documents=documents)
     return response
+
 
 if __name__ == "__main__":
     port = int(os.environ["PORT"])
